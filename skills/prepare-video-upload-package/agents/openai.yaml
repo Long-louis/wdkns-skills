@@ -1,0 +1,4 @@
+interface:
+  display_name: "Prepare Video Upload Package"
+  short_description: "Download video, subtitles, metadata, and cover files for cloud upload workflows."
+  default_prompt: "Use this skill locally to prepare a Bilibili or YouTube upload package for cloud GPT Pro or Agent workflows: download video, subtitles, metadata, cover image, transcribe speech when captions are missing, normalize filenames, and produce a README for the downstream uploaded-video Markdown or PDF skill."

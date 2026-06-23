@@ -21,6 +21,8 @@ Ask the user to upload one package folder or zip with these files:
 
 For Bilibili multi-part videos, upload only the selected parts or name files clearly as `part-01.mp4`, `part-01.srt`, etc.
 
+If the user has not prepared these files yet, tell them to run the `prepare-video-upload-package` skill locally first. That local skill handles the low-token download/transcription/package phase before this cloud PDF workflow.
+
 ### Local Preparation Commands
 
 Run these commands on a local machine before uploading files to the cloud agent.

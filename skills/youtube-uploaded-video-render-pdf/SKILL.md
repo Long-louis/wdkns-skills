@@ -19,6 +19,8 @@ Ask the user to upload one package folder or zip with these files:
 - `cover.jpg` or `thumbnail.jpg` when available
 - optional `README.md` with the original URL, target language, and user preference
 
+If the user has not prepared these files yet, tell them to run the `prepare-video-upload-package` skill locally first. That local skill handles the low-token download/transcription/package phase before this cloud PDF workflow.
+
 ### Local Preparation Commands
 
 Run these commands on a local machine before uploading files to the cloud agent.
