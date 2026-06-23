@@ -1,0 +1,4 @@
+interface:
+  display_name: "YouTube Uploaded Video Render PDF"
+  short_description: "Create a LaTeX/PDF note from uploaded YouTube video files."
+  default_prompt: "Use this skill when YouTube video files, subtitles, metadata, thumbnails, or screenshots have already been uploaded to a cloud agent. Produce a detailed LaTeX teaching note and rendered PDF from uploaded artifacts only, without downloading from YouTube."

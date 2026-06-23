@@ -1,0 +1,4 @@
+interface:
+  display_name: "Bilibili Uploaded Video Render PDF"
+  short_description: "Create a LaTeX/PDF note from uploaded Bilibili video files."
+  default_prompt: "Use this skill when Bilibili video files, subtitles, metadata, cover images, or screenshots have already been uploaded to a cloud agent. Produce a detailed LaTeX teaching note and rendered PDF from uploaded artifacts only, without downloading from Bilibili."
