@@ -1,0 +1,4 @@
+interface:
+  display_name: "Bilibili Uploaded Video Markdown"
+  short_description: "Summarize uploaded Bilibili video files into Markdown without fetching the URL."
+  default_prompt: "Use this skill when the Bilibili video, subtitles, screenshots, or metadata have already been uploaded to a cloud agent. Produce a Markdown learning note, review digest, or buying guide from uploaded artifacts only, with timestamped evidence and no remote download or LaTeX/PDF workflow."

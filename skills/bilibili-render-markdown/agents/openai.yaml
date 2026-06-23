@@ -1,0 +1,4 @@
+interface:
+  display_name: "Bilibili Render Markdown"
+  short_description: "Turn a Bilibili video into a screenshot-rich Markdown note or guide."
+  default_prompt: "Use this skill to turn a Bilibili video into a lightweight Markdown learning note, buying guide, product review digest, or tutorial summary with local image assets, timestamped evidence, and no LaTeX/PDF workflow."
