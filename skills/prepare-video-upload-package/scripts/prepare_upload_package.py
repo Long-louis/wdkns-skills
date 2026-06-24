@@ -18,6 +18,7 @@ from typing import Any
 
 
 ROOT_FILES = ("video.mp4", "subtitles.srt", "metadata.json", "cover.jpg", "README.md")
+MIB = 1024 * 1024
 
 
 def run(args: list[str], *, stdout: Any = None, env: dict[str, str] | None = None) -> None:
@@ -123,7 +124,105 @@ def ffprobe(path: Path) -> dict[str, Any]:
     return json.loads(result.stdout)
 
 
-def normalize(package_dir: Path, source_dir: Path, subtitle_path: Path | None) -> dict[str, str]:
+def quality_summary(path: Path) -> dict[str, str]:
+    info = ffprobe(path)
+    stream = (info.get("streams") or [{}])[0]
+    fmt = info.get("format") or {}
+    return {
+        "codec": str(stream.get("codec_name") or "unknown"),
+        "width": str(stream.get("width") or "unknown"),
+        "height": str(stream.get("height") or "unknown"),
+        "fps": str(stream.get("r_frame_rate") or "unknown"),
+        "duration": str(fmt.get("duration") or "unknown"),
+        "size": str(fmt.get("size") or path.stat().st_size),
+    }
+
+
+def numeric(value: str, fallback: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return fallback
+
+
+def scale_filter(width: int, video_kbps: int) -> str:
+    if video_kbps < 420:
+        max_width = min(width, 854)
+    elif video_kbps < 850:
+        max_width = min(width, 1280)
+    else:
+        max_width = min(width, 1920)
+    return f"scale='min({max_width},iw)':-2"
+
+
+def compress_for_upload(source: Path, dest: Path, max_upload_mib: int) -> tuple[dict[str, str], str]:
+    source_quality = quality_summary(source)
+    source_size = source.stat().st_size
+    max_bytes = max_upload_mib * MIB
+    if source_size <= max_bytes:
+        shutil.copy2(source, dest)
+        return source_quality, f"not compressed; source video is within {max_upload_mib} MiB"
+
+    duration = max(numeric(source_quality.get("duration", "0")), 1.0)
+    width = int(numeric(source_quality.get("width", "1280"), 1280))
+    # Leave room for subtitles, cover, metadata, README, and MP4/container variance.
+    target_bytes = max((max_upload_mib - 12) * MIB, int(max_bytes * 0.82))
+    attempts = [1.0, 0.88, 0.76]
+    last_note = ""
+
+    for i, factor in enumerate(attempts, 1):
+        adjusted_target = int(target_bytes * factor)
+        total_kbps = max(int((adjusted_target * 8) / duration / 1000), 260)
+        audio_kbps = 64 if total_kbps < 800 else 96
+        video_kbps = max(total_kbps - audio_kbps, 180)
+        vf = scale_filter(width, video_kbps)
+        tmp = dest.with_suffix(f".compressed-{i}.mp4")
+        run(
+            [
+                "ffmpeg",
+                "-y",
+                "-i",
+                str(source),
+                "-vf",
+                vf,
+                "-c:v",
+                "libx264",
+                "-preset",
+                "veryfast",
+                "-b:v",
+                f"{video_kbps}k",
+                "-maxrate",
+                f"{int(video_kbps * 1.25)}k",
+                "-bufsize",
+                f"{int(video_kbps * 2.5)}k",
+                "-c:a",
+                "aac",
+                "-b:a",
+                f"{audio_kbps}k",
+                "-movflags",
+                "+faststart",
+                str(tmp),
+            ]
+        )
+        final_size = tmp.stat().st_size
+        last_note = (
+            f"compressed from {source_size} bytes to {final_size} bytes "
+            f"with target video bitrate {video_kbps}k and audio bitrate {audio_kbps}k"
+        )
+        if final_size <= max_bytes:
+            tmp.replace(dest)
+            return source_quality, last_note
+        tmp.unlink()
+
+    raise RuntimeError(f"Compressed video still exceeds {max_upload_mib} MiB; last attempt: {last_note}")
+
+
+def normalize(
+    package_dir: Path,
+    source_dir: Path,
+    subtitle_path: Path | None,
+    max_upload_mib: int,
+) -> dict[str, str]:
     video = source_dir / "video.mp4"
     if not video.exists():
         candidates = sorted(source_dir.glob("video.*"))
@@ -131,7 +230,7 @@ def normalize(package_dir: Path, source_dir: Path, subtitle_path: Path | None) -
     if not video.exists():
         raise FileNotFoundError("No downloaded video file found under source/")
 
-    shutil.copy2(video, package_dir / "video.mp4")
+    source_quality, compression_note = compress_for_upload(video, package_dir / "video.mp4", max_upload_mib)
     if subtitle_path and subtitle_path.exists():
         shutil.copy2(subtitle_path, package_dir / "subtitles.srt")
 
@@ -146,17 +245,13 @@ def normalize(package_dir: Path, source_dir: Path, subtitle_path: Path | None) -
     if cover:
         shutil.copy2(cover, package_dir / "cover.jpg")
 
-    info = ffprobe(package_dir / "video.mp4")
-    stream = (info.get("streams") or [{}])[0]
-    fmt = info.get("format") or {}
-    return {
-        "codec": str(stream.get("codec_name") or "unknown"),
-        "width": str(stream.get("width") or "unknown"),
-        "height": str(stream.get("height") or "unknown"),
-        "fps": str(stream.get("r_frame_rate") or "unknown"),
-        "duration": str(fmt.get("duration") or "unknown"),
-        "size": str(fmt.get("size") or "unknown"),
-    }
+    upload_quality = quality_summary(package_dir / "video.mp4")
+    upload_quality["source_codec"] = source_quality.get("codec", "unknown")
+    upload_quality["source_width"] = source_quality.get("width", "unknown")
+    upload_quality["source_height"] = source_quality.get("height", "unknown")
+    upload_quality["source_size"] = source_quality.get("size", "unknown")
+    upload_quality["compression_note"] = compression_note
+    return upload_quality
 
 
 def transcribe_if_needed(args: argparse.Namespace, package_dir: Path, source_dir: Path, skill_dir: Path) -> tuple[Path | None, str]:
@@ -255,6 +350,9 @@ def write_readme(
 - Video format selector: `{format_selector(platform, args.format)}`
 - Final video: {quality.get("codec")} {quality.get("width")}x{quality.get("height")} at {quality.get("fps")}
 - Final size bytes: {size}
+- Source video: {quality.get("source_codec")} {quality.get("source_width")}x{quality.get("source_height")}, {quality.get("source_size")} bytes
+- Upload compression: {quality.get("compression_note")}
+- Max upload ZIP target: {args.max_upload_mib} MiB
 - Subtitle source: {subtitle_source}
 - Login state: {cookie_line}
 - Proxy: {proxy or "not used"}
@@ -295,6 +393,7 @@ def main() -> None:
     parser.add_argument("--language", default="auto", choices=["auto", "zh", "en", "yue", "ja", "ko", "nospeech"])
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--skip-asr", action="store_true")
+    parser.add_argument("--max-upload-mib", type=int, default=300, help="Compress root video when the upload package would exceed this size")
     parser.add_argument("--no-proxy", action="store_true")
     args = parser.parse_args()
 
@@ -346,7 +445,7 @@ def main() -> None:
     run(download_cmd)
 
     subtitle_path, subtitle_source = transcribe_if_needed(args, package_dir, source_dir, skill_dir)
-    quality = normalize(package_dir, source_dir, subtitle_path)
+    quality = normalize(package_dir, source_dir, subtitle_path, args.max_upload_mib)
     write_readme(package_dir, metadata, platform, args, quality, subtitle_source, proxy)
     zip_path = create_minimal_zip(package_dir)
 

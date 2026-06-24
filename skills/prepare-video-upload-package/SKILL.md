@@ -32,7 +32,7 @@ Also create a minimal upload ZIP next to the folder:
 <safe-video-title>-upload-minimal.zip
 ```
 
-The minimal ZIP must contain only the root upload files, not `source/`, caches, audio intermediates, or low-quality comparison downloads.
+The minimal ZIP must contain only the root upload files, not `source/`, caches, audio intermediates, or low-quality comparison downloads. Keep the minimal ZIP under 300 MiB by default; compress the root `video.mp4` when needed.
 
 Required when available:
 
@@ -52,6 +52,7 @@ If a required artifact cannot be obtained, keep the package and record the limit
 - Prefer the user's actual logged-in browser when known. On this Mac, Brave is the usual browser, so use `--cookies-from-browser brave` after explicit authorization.
 - Avoid reusing an existing `source/video.mp4` blindly. `yt-dlp` may skip a better download when a lower-quality file already exists. Archive or overwrite old files deliberately, then verify the final video with `ffprobe`.
 - Prefer the highest available video quality that is practically uploadable. If the file is too large, keep the high-quality source in `source/` and create a smaller upload copy only after recording the tradeoff in `README.md`.
+- For web uploads, prioritize a package that can actually be uploaded. Default target: keep `<package>-minimal.zip` under 300 MiB. Preserve the original high-quality download in `source/video.mp4`, and transcode only the root `video.mp4` that enters the minimal ZIP.
 - Use SenseVoiceSmall as the default local ASR model when platform subtitles are missing or unusable. It is preferred over Whisper for Chinese and Chinese-English mixed videos, and also supports English.
 - For English-only live/low-latency transcription, Moonshine Voice is an optional alternative. Use it only when its file-transcription tooling is available locally.
 - Keep Whisper only as a last-resort fallback when SenseVoice/Moonshine cannot run.
@@ -114,6 +115,7 @@ Useful options:
 
 - `--output-root outputs`: place packages under an output directory.
 - `--format "<yt-dlp-format-selector>"`: override the default quality selector.
+- `--max-upload-mib 300`: compress the root `video.mp4` when needed so the minimal ZIP stays below the upload target.
 - `--skip-asr`: skip SenseVoiceSmall when platform subtitles are missing.
 - `--no-proxy`: do not auto-use `http://127.0.0.1:7890`.
 
@@ -125,7 +127,8 @@ The script:
 4. archives any pre-existing `source/video.mp4` before downloading a new one;
 5. uses platform subtitles first, then SenseVoiceSmall only if subtitles are missing and ASR is not skipped;
 6. normalizes `video.mp4`, `subtitles.srt`, `metadata.json`, `cover.jpg`, and `README.md` at the package root;
-7. creates `<package>-minimal.zip` containing only the upload files.
+7. compresses root `video.mp4` when the upload package would exceed `--max-upload-mib`, while preserving the original under `source/`;
+8. creates `<package>-minimal.zip` containing only the upload files.
 
 For Bilibili, the default selector prefers browser-compatible H.264 video when available, then falls back to the best stream. If Bilibili reports premium-only formats such as `1080P 高码率` as unavailable, record that limitation in `README.md` and use the highest stream available to the authorized login state.
 
@@ -329,7 +332,9 @@ Before handing the package to the user:
 - `cover.jpg` exists, or `README.md` states why no cover was available
 - `README.md` records URL, platform, subtitle source, and missing artifacts
 - `README.md` records whether browser cookies/login state were used with explicit user authorization
+- `README.md` records whether the root upload video was compressed and where the original source video remains
 - minimal ZIP contains only root upload files and does not include `source/`, `.uv-cache`, model caches, extracted audio, or low-quality comparison downloads
+- minimal ZIP is under the selected upload limit, normally 300 MiB
 - final video resolution/codec has been verified with `ffprobe`, especially after using browser cookies
 - multi-part videos have clear part names and ordering
 
