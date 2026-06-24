@@ -26,6 +26,14 @@ Create one folder per video:
     └── optional alternate subtitle tracks
 ```
 
+Also create a minimal upload ZIP next to the folder:
+
+```text
+<safe-video-title>-upload-minimal.zip
+```
+
+The minimal ZIP must contain only the root upload files, not `source/`, caches, audio intermediates, or low-quality comparison downloads.
+
 Required when available:
 
 - `video.mp4`: playable local video file
@@ -41,6 +49,8 @@ If a required artifact cannot be obtained, keep the package and record the limit
 - Use local execution for downloads and transcription.
 - Use `yt-dlp` for metadata, subtitles, thumbnails, and video.
 - Ask for explicit user authorization before reading browser cookies or login state. Once authorized, use the login state to fetch the highest available quality, not merely the highest anonymous quality.
+- Prefer the user's actual logged-in browser when known. On this Mac, Brave is the usual browser, so use `--cookies-from-browser brave` after explicit authorization.
+- Avoid reusing an existing `source/video.mp4` blindly. `yt-dlp` may skip a better download when a lower-quality file already exists. Archive or overwrite old files deliberately, then verify the final video with `ffprobe`.
 - Prefer the highest available video quality that is practically uploadable. If the file is too large, keep the high-quality source in `source/` and create a smaller upload copy only after recording the tradeoff in `README.md`.
 - Use SenseVoiceSmall as the default local ASR model when platform subtitles are missing or unusable. It is preferred over Whisper for Chinese and Chinese-English mixed videos, and also supports English.
 - For English-only live/low-latency transcription, Moonshine Voice is an optional alternative. Use it only when its file-transcription tooling is available locally.
@@ -80,6 +90,44 @@ yt-dlp --version
 ```
 
 If `yt-dlp` is missing, install it using the environment's preferred package manager. If Python package installation is needed, use `uv tool install yt-dlp` or another `uv`-based command rather than system `pip`.
+
+## Preferred One-Command Workflow
+
+Use `scripts/prepare_upload_package.py` for normal Bilibili and YouTube preparation. Manual commands below are for debugging or unusual cases.
+
+After the user explicitly authorizes browser login state, run:
+
+```bash
+uv run python <path-to-this-skill>/scripts/prepare_upload_package.py \
+  --allow-browser-cookies \
+  --browser brave \
+  "<VIDEO_URL>"
+```
+
+Without browser cookies:
+
+```bash
+uv run python <path-to-this-skill>/scripts/prepare_upload_package.py "<VIDEO_URL>"
+```
+
+Useful options:
+
+- `--output-root outputs`: place packages under an output directory.
+- `--format "<yt-dlp-format-selector>"`: override the default quality selector.
+- `--skip-asr`: skip SenseVoiceSmall when platform subtitles are missing.
+- `--no-proxy`: do not auto-use `http://127.0.0.1:7890`.
+
+The script:
+
+1. auto-detects local proxy port `7890`;
+2. saves `yt-dlp --dump-single-json` metadata;
+3. downloads video, subtitles, and cover into `source/`;
+4. archives any pre-existing `source/video.mp4` before downloading a new one;
+5. uses platform subtitles first, then SenseVoiceSmall only if subtitles are missing and ASR is not skipped;
+6. normalizes `video.mp4`, `subtitles.srt`, `metadata.json`, `cover.jpg`, and `README.md` at the package root;
+7. creates `<package>-minimal.zip` containing only the upload files.
+
+For Bilibili, the default selector prefers browser-compatible H.264 video when available, then falls back to the best stream. If Bilibili reports premium-only formats such as `1080P 高码率` as unavailable, record that limitation in `README.md` and use the highest stream available to the authorized login state.
 
 ## Bilibili Workflow
 
@@ -125,15 +173,16 @@ yt-dlp \
   "<BILIBILI_URL_OR_BV>"
 ```
 
-If anonymous access is lower quality, ask the user for explicit approval to use browser login state. After approval, use Chrome cookies and request the highest available quality:
+If anonymous access is lower quality, ask the user for explicit approval to use browser login state. After approval, use the user's browser cookies and request the highest available quality. Prefer Brave on this Mac:
 
 ```bash
 yt-dlp \
-  --cookies-from-browser chrome \
+  --cookies-from-browser brave \
   --write-thumbnail \
   --convert-thumbnails jpg \
-  -f "bv*+ba/best" \
+  -f "bv*[vcodec^=avc1]+ba/best[vcodec^=avc1]/bv*+ba/best" \
   --merge-output-format mp4 \
+  --force-overwrites \
   -o "source/video.%(ext)s" \
   "<BILIBILI_URL_OR_BV>"
 ```
@@ -201,15 +250,16 @@ yt-dlp \
   "<YOUTUBE_URL>"
 ```
 
-With explicit authorization for browser login state:
+With explicit authorization for browser login state, choose the browser that actually contains the login state:
 
 ```bash
 yt-dlp \
-  --cookies-from-browser chrome \
+  --cookies-from-browser brave \
   --write-thumbnail \
   --convert-thumbnails jpg \
   -f "bv*+ba/best" \
   --merge-output-format mp4 \
+  --force-overwrites \
   -o "source/video.%(ext)s" \
   "<YOUTUBE_URL>"
 ```
@@ -245,11 +295,11 @@ After downloads finish, normalize filenames:
 ```bash
 cp source/metadata.json metadata.json
 cp source/video.mp4 video.mp4
-cp source/*.srt subtitles.srt
-cp source/*.jpg cover.jpg
+cp <selected-platform-or-asr-subtitle>.srt subtitles.srt
+cp <selected-cover>.jpg cover.jpg
 ```
 
-If globbing selects the wrong file, choose manually and record the selected subtitle/cover in `README.md`.
+Do not use broad globs such as `cp source/*.srt subtitles.srt`; they can select the wrong language or an old subtitle. Choose the final subtitle explicitly and record it in `README.md`.
 
 Create `README.md`:
 
@@ -279,7 +329,8 @@ Before handing the package to the user:
 - `cover.jpg` exists, or `README.md` states why no cover was available
 - `README.md` records URL, platform, subtitle source, and missing artifacts
 - `README.md` records whether browser cookies/login state were used with explicit user authorization
-- package does not contain unrelated large files
+- minimal ZIP contains only root upload files and does not include `source/`, `.uv-cache`, model caches, extracted audio, or low-quality comparison downloads
+- final video resolution/codec has been verified with `ffprobe`, especially after using browser cookies
 - multi-part videos have clear part names and ordering
 
 ## Handoff
