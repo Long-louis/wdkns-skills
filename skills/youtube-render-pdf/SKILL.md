@@ -38,6 +38,8 @@ The notes must read like a strong human teacher is guiding the reader through th
 
 2. Prefer the best usable video source for figure extraction.
    Probe formats and choose the highest resolution that is actually downloadable in the current environment.
+   If the highest quality requires age-gated, private, member-only, or otherwise authenticated access, ask for explicit authorization to use browser cookies/login state before running `yt-dlp --cookies-from-browser chrome`.
+   After authorization, fetch the highest available quality rather than stopping at the anonymous stream.
 
 3. Acquire the video's original cover image before writing the `.tex`.
    Prefer the highest-resolution thumbnail exposed by the platform metadata.
@@ -49,9 +51,19 @@ The notes must read like a strong human teacher is guiding the reader through th
    Prefer the default language that best matches the video or the user's requested language.
    Fall back to the closest available subtitle track only when needed.
    Preserve the subtitle timestamps; do not flatten subtitles into plain text too early if figures still need to be located.
+   If no usable subtitle track exists, extract audio and transcribe locally. Prefer SenseVoiceSmall through FunASR for Chinese, English, and mixed-language videos; use Moonshine Voice only for English-only low-latency local transcription when available; keep Whisper only as a last-resort fallback.
 
 5. Keep all source artifacts local when practical.
    Typical working artifacts are metadata, the downloaded cover image, a timestamped subtitle file, optional cleaned transcript text, a local video file, and extracted frames.
+
+Example local ASR command:
+
+```bash
+yt-dlp -x --audio-format wav -o "audio.%(ext)s" "<URL>"
+uv run --with funasr --with modelscope --with torch --with torchaudio --with soundfile \
+  python <prepare-video-upload-package>/scripts/sensevoice_to_srt.py \
+  audio.wav --language auto --device cpu -o subtitles.srt
+```
 
 ## Long Video Strategy
 

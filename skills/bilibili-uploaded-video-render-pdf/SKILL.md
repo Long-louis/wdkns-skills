@@ -52,24 +52,26 @@ yt-dlp \
   "<BILIBILI_URL_OR_BV>"
 ```
 
-Download the cover and video. Add `--cookies-from-browser chrome` when the desired resolution requires login:
+Download the cover and video. First try public access, then ask for explicit authorization to use browser cookies/login state if public access is lower quality. After authorization, add `--cookies-from-browser chrome` and fetch the highest available quality:
 
 ```bash
 yt-dlp \
   --cookies-from-browser chrome \
   --write-thumbnail \
   --convert-thumbnails jpg \
-  -f "bv*[height<=1080]+ba/b[height<=1080]/best" \
+  -f "bv*+ba/best" \
   --merge-output-format mp4 \
   -o "source/video.%(ext)s" \
   "<BILIBILI_URL_OR_BV>"
 ```
 
-If no platform subtitles are available, extract audio and create an SRT locally:
+If no platform subtitles are available, extract audio and create an SRT locally. Prefer SenseVoiceSmall through FunASR for Chinese, Cantonese, English, and mixed Chinese-English videos. Use Moonshine Voice only for English-only low-latency transcription when available. Keep Whisper only as a last-resort fallback.
 
 ```bash
 yt-dlp -x --audio-format wav -o "source/audio.%(ext)s" "<BILIBILI_URL_OR_BV>"
-whisper source/audio.wav --model medium --language zh --output_format srt --output_dir source
+uv run --with funasr --with modelscope --with torch --with torchaudio --with soundfile \
+  python <prepare-video-upload-package>/scripts/sensevoice_to_srt.py \
+  source/audio.wav --language auto --device cpu -o source/subtitles.srt
 ```
 
 Rename files before upload so the cloud agent can identify them easily:

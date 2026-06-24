@@ -20,8 +20,8 @@ Do not create LaTeX or render a PDF unless the user explicitly asks for it.
 
 | Aspect | Handling |
 |--------|----------|
-| Subtitle scarcity | Try CC subtitles first, then Whisper/speech-to-text, then visual-only mode with explicit limitations |
-| Login-gated HD | 1080P+ often requires cookies; use `yt-dlp --cookies-from-browser chrome` when allowed |
+| Subtitle scarcity | Try CC subtitles first, then local SenseVoiceSmall/Moonshine ASR, then Whisper only as last resort, then visual-only mode with explicit limitations |
+| Login-gated HD | Ask for explicit authorization to use browser cookies/login state, then fetch the highest available quality with `yt-dlp --cookies-from-browser chrome` |
 | Multi-part videos | Detect 分P videos and ask which parts to process before downloading |
 | URL formats | Support `bilibili.com/video/BV...` and `b23.tv` short links |
 | Danmaku | Do not use danmaku as a teaching source unless the user explicitly requests it |
@@ -64,10 +64,15 @@ yt-dlp --write-subs --sub-langs "zh-Hans,zh-CN,zh,ai-zh" --convert-subs srt \
 Priority 2: speech-to-text.
 
 If no usable subtitles exist and speech matters, extract audio and transcribe to a timestamped SRT.
+Prefer SenseVoiceSmall through FunASR for Chinese, Cantonese, English, and Chinese-English mixed videos.
+For English-only live/low-latency use, Moonshine Voice is optional if available.
+Use Whisper only as a last-resort fallback.
 
 ```bash
 yt-dlp -x --audio-format wav -o "audio.%(ext)s" "<URL>"
-whisper audio.wav --model medium --language zh --output_format srt --output_dir .
+uv run --with funasr --with modelscope --with torch --with torchaudio --with soundfile \
+  python <prepare-video-upload-package>/scripts/sensevoice_to_srt.py \
+  audio.wav --language auto --device cpu -o subtitles.srt
 ```
 
 Priority 3: visual-only mode.
@@ -77,7 +82,7 @@ Use this only when subtitles/transcription are unavailable or unusable. State th
 ### Video and Cover Download
 
 1. Save the official cover image whenever available and place it near the top of `notes.md`.
-2. Download the best usable video source for frame extraction. Use cookies when needed and allowed.
+2. Download the highest available video source for frame extraction. If anonymous access is lower quality, ask for explicit authorization to use cookies/login state and then fetch the highest available stream.
 3. Keep source artifacts local when practical: metadata, cover, subtitles, transcript, video, extracted frames, and contact sheets.
 
 ## Pedagogical Standard

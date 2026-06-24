@@ -40,10 +40,29 @@ If a required artifact cannot be obtained, keep the package and record the limit
 
 - Use local execution for downloads and transcription.
 - Use `yt-dlp` for metadata, subtitles, thumbnails, and video.
-- Use Whisper or another available speech-to-text tool only when platform subtitles are missing or unusable.
-- Prefer video up to 1080p unless the user requests higher resolution; higher resolutions can make upload packages unnecessarily large.
-- For Bilibili HD content, use browser cookies only when the user permits it.
+- Ask for explicit user authorization before reading browser cookies or login state. Once authorized, use the login state to fetch the highest available quality, not merely the highest anonymous quality.
+- Prefer the highest available video quality that is practically uploadable. If the file is too large, keep the high-quality source in `source/` and create a smaller upload copy only after recording the tradeoff in `README.md`.
+- Use SenseVoiceSmall as the default local ASR model when platform subtitles are missing or unusable. It is preferred over Whisper for Chinese and Chinese-English mixed videos, and also supports English.
+- For English-only live/low-latency transcription, Moonshine Voice is an optional alternative. Use it only when its file-transcription tooling is available locally.
+- Keep Whisper only as a last-resort fallback when SenseVoice/Moonshine cannot run.
 - Do not summarize the content beyond a short README description.
+
+## ASR Model Policy
+
+As of 2026-06, prefer these local Mac-friendly transcription choices:
+
+1. **Default for Chinese, Cantonese, English, and mixed Chinese-English:** SenseVoiceSmall through FunASR.
+   It supports Mandarin, Cantonese, English, Japanese, and Korean; is designed for low-latency inference; and is better suited to Chinese than Whisper in this workflow.
+2. **Optional for English-only, live, or very low-latency use:** Moonshine Voice.
+   It runs on device and supports macOS, but use it only if its local CLI/API can transcribe files into a usable transcript for the current environment.
+3. **Fallback only:** Whisper.
+   Use it only if the preferred models cannot be installed or executed.
+
+Model download priority in China-region environments:
+
+1. Try ModelScope model names first, such as `iic/SenseVoiceSmall`.
+2. If HuggingFace is required, try `HF_ENDPOINT=https://aifasthub.com`, then `HF_ENDPOINT=https://hf-mirror.com`.
+3. Use the local proxy only after mirrors fail.
 
 ## Common Setup
 
@@ -94,39 +113,56 @@ Prefer manual subtitles over auto-generated subtitles when both exist.
 
 ### 4. Download cover and video
 
-Without cookies:
+First try without cookies to see what public quality is available:
 
 ```bash
 yt-dlp \
   --write-thumbnail \
   --convert-thumbnails jpg \
-  -f "bv*[height<=1080]+ba/b[height<=1080]/best" \
+  -f "bv*+ba/best" \
   --merge-output-format mp4 \
   -o "source/video.%(ext)s" \
   "<BILIBILI_URL_OR_BV>"
 ```
 
-With Chrome cookies when needed and permitted:
+If anonymous access is lower quality, ask the user for explicit approval to use browser login state. After approval, use Chrome cookies and request the highest available quality:
 
 ```bash
 yt-dlp \
   --cookies-from-browser chrome \
   --write-thumbnail \
   --convert-thumbnails jpg \
-  -f "bv*[height<=1080]+ba/b[height<=1080]/best" \
+  -f "bv*+ba/best" \
   --merge-output-format mp4 \
   -o "source/video.%(ext)s" \
   "<BILIBILI_URL_OR_BV>"
 ```
 
-### 5. Transcribe if subtitles are missing
+### 5. Transcribe if subtitles are missing or unusable
+
+Extract audio:
 
 ```bash
 yt-dlp -x --audio-format wav -o "source/audio.%(ext)s" "<BILIBILI_URL_OR_BV>"
-whisper source/audio.wav --model medium --language zh --output_format srt --output_dir source
 ```
 
-Use a smaller Whisper model only when speed or hardware constraints matter more than transcript quality.
+Default Chinese/mixed-language transcription with SenseVoiceSmall:
+
+```bash
+uv run \
+  --with funasr \
+  --with modelscope \
+  --with torch \
+  --with torchaudio \
+  --with soundfile \
+  python <path-to-this-skill>/scripts/sensevoice_to_srt.py \
+  source/audio.wav \
+  --language auto \
+  --device cpu \
+  -o source/subtitles.srt
+```
+
+Use `--language zh` for clearly Mandarin videos and `--language en` for clearly English videos. Use `--language auto` for Chinese-English mixed videos.
 
 ## YouTube Workflow
 
@@ -153,24 +189,54 @@ Prefer manual captions. If the final note will be Chinese and only English capti
 
 ### 3. Download thumbnail and video
 
+Try to fetch the highest available quality. If YouTube login is needed for age-gated/private/member-only content, ask for explicit user authorization before using cookies:
+
 ```bash
 yt-dlp \
   --write-thumbnail \
   --convert-thumbnails jpg \
-  -f "bv*[height<=1080]+ba/b[height<=1080]/best" \
+  -f "bv*+ba/best" \
   --merge-output-format mp4 \
   -o "source/video.%(ext)s" \
   "<YOUTUBE_URL>"
 ```
 
-### 4. Transcribe if captions are missing
+With explicit authorization for browser login state:
+
+```bash
+yt-dlp \
+  --cookies-from-browser chrome \
+  --write-thumbnail \
+  --convert-thumbnails jpg \
+  -f "bv*+ba/best" \
+  --merge-output-format mp4 \
+  -o "source/video.%(ext)s" \
+  "<YOUTUBE_URL>"
+```
+
+### 4. Transcribe if captions are missing or unusable
 
 ```bash
 yt-dlp -x --audio-format wav -o "source/audio.%(ext)s" "<YOUTUBE_URL>"
-whisper source/audio.wav --model medium --output_format srt --output_dir source
 ```
 
-Set `--language zh` only when the speech language is known to be Chinese.
+Default file transcription with SenseVoiceSmall:
+
+```bash
+uv run \
+  --with funasr \
+  --with modelscope \
+  --with torch \
+  --with torchaudio \
+  --with soundfile \
+  python <path-to-this-skill>/scripts/sensevoice_to_srt.py \
+  source/audio.wav \
+  --language auto \
+  --device cpu \
+  -o source/subtitles.srt
+```
+
+For English-only videos where Moonshine Voice is already available and file transcription works in the environment, it may be used instead. Keep SenseVoiceSmall as the default cross-language path.
 
 ## Normalize Package Files
 
@@ -194,9 +260,10 @@ Create `README.md`:
 - Platform: Bilibili / YouTube
 - Video file: video.mp4
 - Subtitle file: subtitles.srt
-- Subtitle source: platform CC / auto captions / Whisper
+- Subtitle source: platform CC / auto captions / SenseVoiceSmall / Moonshine / Whisper fallback
 - Metadata file: metadata.json
 - Cover file: cover.jpg
+- Video quality source: anonymous / browser cookies with user authorization
 - Selected parts or ranges:
 - Missing or low-quality artifacts:
 - Intended downstream skill: bilibili-uploaded-video-markdown / youtube-uploaded-video-markdown / bilibili-uploaded-video-render-pdf / youtube-uploaded-video-render-pdf
@@ -211,6 +278,7 @@ Before handing the package to the user:
 - `metadata.json` exists and is valid JSON
 - `cover.jpg` exists, or `README.md` states why no cover was available
 - `README.md` records URL, platform, subtitle source, and missing artifacts
+- `README.md` records whether browser cookies/login state were used with explicit user authorization
 - package does not contain unrelated large files
 - multi-part videos have clear part names and ordering
 

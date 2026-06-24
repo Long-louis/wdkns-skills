@@ -39,13 +39,22 @@ The Markdown must be readable offline and should not depend on the original vide
 3. Prefer the user-requested language. Otherwise use the video's primary language or the closest available track.
 4. Preserve subtitle timestamps until frame selection is complete.
 5. Download the official thumbnail when available and place it near the top of `notes.md`.
-6. Download the best usable video source needed for frame extraction. If the video is long, download only the needed ranges when practical.
-7. If subtitles are unavailable and speech matters, extract audio and transcribe with an available speech-to-text tool.
+6. Download the highest available video source needed for frame extraction. If the highest quality requires age-gated, private, member-only, or otherwise authenticated access, ask for explicit authorization to use browser cookies/login state before running `yt-dlp --cookies-from-browser chrome`. If the video is long, download only the needed ranges when practical.
+7. If subtitles are unavailable and speech matters, extract audio and transcribe locally. Prefer SenseVoiceSmall through FunASR for Chinese, English, and mixed-language videos; use Moonshine Voice only for English-only low-latency local transcription when available; keep Whisper only as a last-resort fallback.
 
 Example subtitle command:
 
 ```bash
 yt-dlp --write-subs --write-auto-subs --convert-subs srt --skip-download "<URL>"
+```
+
+Example local ASR command:
+
+```bash
+yt-dlp -x --audio-format wav -o "audio.%(ext)s" "<URL>"
+uv run --with funasr --with modelscope --with torch --with torchaudio --with soundfile \
+  python <prepare-video-upload-package>/scripts/sensevoice_to_srt.py \
+  audio.wav --language auto --device cpu -o subtitles.srt
 ```
 
 ## Pedagogical Standard

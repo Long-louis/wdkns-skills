@@ -57,17 +57,21 @@ Download thumbnail and video:
 yt-dlp \
   --write-thumbnail \
   --convert-thumbnails jpg \
-  -f "bv*[height<=1080]+ba/b[height<=1080]/best" \
+  -f "bv*+ba/best" \
   --merge-output-format mp4 \
   -o "source/video.%(ext)s" \
   "<YOUTUBE_URL>"
 ```
 
-If no captions are available, extract audio and create an SRT locally:
+If the highest quality requires age-gated, private, member-only, or otherwise authenticated access, ask for explicit authorization to use browser cookies/login state before adding `--cookies-from-browser chrome`.
+
+If no captions are available, extract audio and create an SRT locally. Prefer SenseVoiceSmall through FunASR for Chinese, English, and mixed-language videos. Use Moonshine Voice only for English-only low-latency transcription when available. Keep Whisper only as a last-resort fallback.
 
 ```bash
 yt-dlp -x --audio-format wav -o "source/audio.%(ext)s" "<YOUTUBE_URL>"
-whisper source/audio.wav --model medium --output_format srt --output_dir source
+uv run --with funasr --with modelscope --with torch --with torchaudio --with soundfile \
+  python <prepare-video-upload-package>/scripts/sensevoice_to_srt.py \
+  source/audio.wav --language auto --device cpu -o source/subtitles.srt
 ```
 
 Rename files before upload so the cloud agent can identify them easily:

@@ -1,6 +1,6 @@
 ---
 name: bilibili-render-pdf
-description: Generate a professional, detailed, figure-rich LaTeX course note and final PDF from a Bilibili lecture, tutorial, or technical talk. Use when the user provides a Bilibili URL (BV number) and wants structured Chinese teaching notes that combine the video's title, chapters, diagrams, formulas, code, subtitle explanations, the original video cover on the front page, and a final synthesis chapter, with key frames extracted from the highest usable video resolution and inserted as figures, and where the final deliverable must include a rendered PDF. Falls back to Whisper speech-to-text when no CC subtitles are available.
+description: Generate a professional, detailed, figure-rich LaTeX course note and final PDF from a Bilibili lecture, tutorial, or technical talk. Use when the user provides a Bilibili URL (BV number) and wants structured Chinese teaching notes that combine the video's title, chapters, diagrams, formulas, code, subtitle explanations, the original video cover on the front page, and a final synthesis chapter, with key frames extracted from the highest usable video resolution and inserted as figures, and where the final deliverable must include a rendered PDF. Falls back to local SenseVoiceSmall or another current local ASR model when no CC subtitles are available.
 ---
 
 # Bilibili Render PDF
@@ -13,11 +13,11 @@ This skill extends the `youtube-render-pdf` workflow with Bilibili-specific adap
 
 | Aspect | Handling |
 |--------|----------|
-| **Subtitle scarcity** | Try CC subtitles first → fall back to Whisper speech-to-text → visual-only mode |
-| **Login-gated HD** | 1080P+ requires cookies; prompt the user to use `yt-dlp --cookies-from-browser chrome` |
+| **Subtitle scarcity** | Try CC subtitles first → fall back to local SenseVoiceSmall/Moonshine ASR → Whisper only as last resort → visual-only mode |
+| **Login-gated HD** | Ask for explicit user authorization to use browser cookies/login state, then fetch the highest available quality with `yt-dlp --cookies-from-browser chrome` |
 | **Multi-part videos** | Detect 分P videos and ask the user which parts to process |
 | **URL formats** | Support `bilibili.com/video/BVxxxxxxx` and `b23.tv` short links |
-| **Danmaku** | Do not use danmaku as a teaching content source (too noisy); use only CC subtitles or Whisper output |
+| **Danmaku** | Do not use danmaku as a teaching content source (too noisy); use only CC subtitles or local ASR output |
 
 ## Goal
 
@@ -66,13 +66,18 @@ yt-dlp --write-subs --sub-langs "zh-Hans,zh-CN,zh,ai-zh" --convert-subs srt \
   --skip-download -o "%(title)s.%(ext)s" "<URL>"
 ```
 
-**Priority 2: Whisper speech-to-text (when no CC subtitles are available)**
+**Priority 2: local ASR (when no CC subtitles are available)**
 
-Extract audio first, then transcribe with Whisper to produce a timestamped SRT file.
+Extract audio first, then transcribe with a current local ASR model to produce a timestamped SRT file.
+Prefer SenseVoiceSmall through FunASR for Chinese, Cantonese, English, and Chinese-English mixed videos.
+For English-only live/low-latency use, Moonshine Voice is an optional alternative if available.
+Use Whisper only as a last-resort fallback when the preferred local models cannot run.
 
 ```
 yt-dlp -x --audio-format wav -o "audio.%(ext)s" "<URL>"
-whisper audio.wav --model medium --language zh --output_format srt --output_dir .
+uv run --with funasr --with modelscope --with torch --with torchaudio --with soundfile \
+  python <prepare-video-upload-package>/scripts/sensevoice_to_srt.py \
+  audio.wav --language auto --device cpu -o subtitles.srt
 ```
 
 **Priority 3: Visual-only mode (when audio quality is too poor)**
@@ -87,10 +92,11 @@ Skip subtitles entirely and rely on dense frame sampling to extract teaching con
 
 2. Prefer the best usable video source for figure extraction.
    Probe formats and choose the highest resolution that is actually downloadable in the current environment.
+   If anonymous access is lower quality, ask for explicit authorization to use browser cookies/login state and then fetch the highest available quality rather than stopping at the anonymous stream.
    Note that 1080P+ on Bilibili typically requires login cookies.
 
 3. Keep all source artifacts local when practical.
-   Typical working artifacts are metadata, the downloaded cover image, a timestamped subtitle file (CC or Whisper-generated), optional cleaned transcript text, a local video file, and extracted frames.
+   Typical working artifacts are metadata, the downloaded cover image, a timestamped subtitle file (CC or local-ASR-generated), optional cleaned transcript text, a local video file, and extracted frames.
 
 ## Long Video Strategy
 
@@ -220,7 +226,7 @@ Before inserting any video frame, first inspect several nearby candidates from t
 - The semantic filename must describe the frame's actual visible content, not a guess based on subtitles, nearby narration, or the intended paragraph topic.
 - If the frame is partially revealed, transitional, or ambiguous, keep searching and do not lock in a semantic name yet.
 
-- Use the timestamped subtitle file (CC or Whisper-generated SRT) as the primary locator for key-frame search.
+- Use the timestamped subtitle file (CC or local-ASR-generated SRT) as the primary locator for key-frame search.
 - First identify the subtitle span that corresponds to the concept, example, formula, or visual explanation being discussed.
 - Then search within that subtitle-aligned time interval, and slightly around its boundaries when needed, to find the best readable frame.
 - Do not jump directly from one guessed timestamp to one extracted frame.
@@ -295,7 +301,7 @@ Before delivery, verify all of the following:
 
 Deliver all of the following:
 
-- the Whisper-generated SRT subtitle file, if speech-to-text was used
+- the local-ASR-generated SRT subtitle file, if speech-to-text was used
 - the downloaded cover image referenced on the front page
 - any extracted or generated figure assets referenced by the document
 - the final `.tex` file and the compiled `.pdf` file (must use a reasonable Chinese filename, e.g., `[中文视频标题]_notes.tex` and `[中文视频标题]_notes.pdf`)
